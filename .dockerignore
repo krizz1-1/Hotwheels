@@ -1,0 +1,12 @@
+.git
+.env
+data
+browser_data
+__pycache__
+*.py[cod]
+*.db
+*.log
+debug_*.json
+tests
+README.md
+DEPLOY_ORACLE_FREE.md

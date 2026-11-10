@@ -1,0 +1,21 @@
+# Secrets
+.env
+*.env
+
+# Persistent runtime data
+data/
+browser_data/
+*.db
+*.sqlite3
+
+# Logs and debug output
+*.log
+debug_*.json
+
+# Python and editor artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/

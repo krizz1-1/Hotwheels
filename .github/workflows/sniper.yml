@@ -1,0 +1,50 @@
+name: Blinkit Hot Wheels alert bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Backup start if a previous run fails before it can hand over.
+    - cron: "0 */6 * * *"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: blinkit-hotwheels-bot
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies and Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Start monitor session
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_PINCODE: ${{ secrets.TARGET_PINCODE }}
+          TARGET_LAT: ${{ secrets.TARGET_LAT }}
+          TARGET_LON: ${{ secrets.TARGET_LON }}
+          TARGET_LOCALITY: ${{ secrets.TARGET_LOCALITY }}
+          TARGET_PRODUCT_URLS: ${{ secrets.TARGET_PRODUCT_URLS }}
+          SEARCH_QUERY: ${{ secrets.SEARCH_QUERY || 'hot wheels' }}
+          CHECK_INTERVAL_SECONDS: ${{ secrets.CHECK_INTERVAL_SECONDS || '20' }}
+          HEADLESS: "true"
+          GITHUB_TOKEN: ${{ github.token }}
+          MAX_RUNTIME_SECONDS: "19800"
+        run: python github_runner.py

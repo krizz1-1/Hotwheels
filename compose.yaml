@@ -1,0 +1,12 @@
+services:
+  blinkit-bot:
+    build: .
+    container_name: blinkit-hotwheels-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+      HEADLESS: "true"
+    volumes:
+      - ./data:/data
