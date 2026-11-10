@@ -38,6 +38,7 @@ class Config:
     # Keep mutable browser data outside the source tree. In Docker this is a
     # mounted volume, so the session survives container recreation.
     DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     USER_DATA_DIR = DATA_DIR / "browser_data"
 
     # SQLite Database path for stock status persistence
