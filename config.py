@@ -27,6 +27,9 @@ class Config:
     CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
     # Minimum interval allowed
     MIN_INTERVAL_SECONDS = 10
+    # Search-result payloads can contain stock data for recommendation cards.
+    # Keep this off for unattended cloud runs; tracked URLs are still alerted.
+    ALERT_NEW_DISCOVERIES = os.getenv("ALERT_NEW_DISCOVERIES", "false").lower() in ("true", "1", "yes")
 
     # Specific Hot Wheels URLs to monitor automatically (comma-separated)
     _raw_urls = os.getenv("TARGET_PRODUCT_URLS", "").strip()

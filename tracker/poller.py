@@ -60,7 +60,9 @@ class HotWheelsPoller:
         for item in items:
             item["locality"] = self.config.TARGET_LOCALITY
             event = self.db.process_product(item)
-            if event in ("RESTOCK", "NEW_DISCOVERY"):
+            if event == "RESTOCK" or (
+                event == "NEW_DISCOVERY" and self.config.ALERT_NEW_DISCOVERIES
+            ):
                 logger.info(f"🚨 {event} DETECTED: {item.get('name')} at {item.get('price')}!")
                 restock_count += 1
                 asyncio.create_task(self.notifier.send_restock_alert(item, event))

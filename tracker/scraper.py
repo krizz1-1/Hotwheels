@@ -288,41 +288,55 @@ class BlinkitScraper:
             return m.group(1)
         return None
 
-    def _is_pdp_in_stock(self, data: Dict[str, Any]) -> bool:
+    def _is_pdp_in_stock(self, data: Dict[str, Any], product_id: str) -> bool:
         """
         Thoroughly analyzes Blinkit PDP response JSON to verify real inventory.
         Checks explicit out-of-stock states, disabled add-to-cart signals, and positive inventory counts.
         """
+        # A PDP response can also include recommendations. Only evaluate a
+        # dictionary that explicitly belongs to the requested product ID.
+        target_found = False
         is_explicit_oos = False
         has_positive_inventory = False
 
         def scan(node):
-            nonlocal is_explicit_oos, has_positive_inventory
+            nonlocal target_found, is_explicit_oos, has_positive_inventory
             if isinstance(node, dict):
+                node_ids = {
+                    str(node.get(key, "")).strip()
+                    for key in ("product_id", "inventory_item_id", "id")
+                }
+                is_target = str(product_id) in node_ids
+                if is_target:
+                    target_found = True
+
+                if is_target:
                 # 1. Check for explicit out-of-stock states
-                for key in ("state", "product_state", "availability", "inventory_state"):
-                    val = str(node.get(key, "")).lower()
-                    if val in ("out_of_stock", "oos", "sold_out", "unavailable", "out of stock"):
-                        is_explicit_oos = True
-
-                # 2. Check for disabled add to cart interaction signals
-                if "DISABLED_ADD_TO_CART" in node:
-                    is_explicit_oos = True
-
-                # 3. Check inventory values
-                for key in ("inventory", "available_inventory", "quantity"):
-                    if key in node and isinstance(node[key], (int, float)):
-                        if node[key] > 0:
-                            has_positive_inventory = True
-                        elif node[key] == 0:
+                    for key in ("state", "product_state", "availability", "inventory_state"):
+                        val = str(node.get(key, "")).lower()
+                        if val in ("out_of_stock", "oos", "sold_out", "unavailable", "out of stock"):
                             is_explicit_oos = True
 
-                # 4. Check stepper max_count
-                if "max_count" in node and isinstance(node["max_count"], (int, float)):
-                    if node["max_count"] > 0:
-                        has_positive_inventory = True
-                    elif node["max_count"] == 0:
+                    # 2. Check for disabled add to cart interaction signals
+                    if "DISABLED_ADD_TO_CART" in node:
                         is_explicit_oos = True
+
+                    # 3. Check inventory values
+                    for key in ("inventory", "available_inventory", "quantity"):
+                        if key in node and isinstance(node[key], (int, float)):
+                            if node[key] > 0:
+                                has_positive_inventory = True
+                            elif node[key] == 0:
+                                is_explicit_oos = True
+
+                    # 4. Check stepper max_count / explicit flag
+                    if node.get("in_stock") is True:
+                        has_positive_inventory = True
+                    if "max_count" in node and isinstance(node["max_count"], (int, float)):
+                        if node["max_count"] > 0:
+                            has_positive_inventory = True
+                        elif node["max_count"] == 0:
+                            is_explicit_oos = True
 
                 for v in node.values():
                     scan(v)
@@ -331,7 +345,7 @@ class BlinkitScraper:
                     scan(it)
 
         scan(data)
-        if is_explicit_oos:
+        if not target_found or is_explicit_oos:
             return False
         return has_positive_inventory
 
@@ -343,7 +357,7 @@ class BlinkitScraper:
         image_url = ""
 
         # Accurate stock determination
-        in_stock = self._is_pdp_in_stock(data)
+        in_stock = self._is_pdp_in_stock(data, pid)
 
         snippets = data.get("response", {}).get("snippets", [])
         for s in snippets:
@@ -422,7 +436,15 @@ class BlinkitScraper:
         try:
             result = await page.evaluate(js_code)
             if result.get("status") == 200 and "data" in result:
-                return self._parse_pdp_payload(pid, result["data"])
+                parsed = self._parse_pdp_payload(pid, result["data"])
+                # Confirm any positive API result on the actual product page.
+                # This rejects stock values from stale or unrelated payload data.
+                if parsed and parsed.get("in_stock"):
+                    confirmed = await self._scrape_pdp_via_navigation(
+                        page, f"https://blinkit.com/prid/{pid}"
+                    )
+                    parsed["in_stock"] = bool(confirmed and confirmed.get("in_stock"))
+                return parsed
         except Exception as e:
             logger.debug(f"Fast internal PDP query failed for {pid}: {e}")
 
@@ -455,7 +477,13 @@ class BlinkitScraper:
             # Extract body text for stock check
             body_text = (await page.inner_text("body")).lower()
             is_out_of_stock = "out of stock" in body_text or "unavailable" in body_text or "sold out" in body_text
-            has_add = "add" in body_text and not is_out_of_stock
+            add_button = page.get_by_role("button", name=re.compile(r"^add$", re.IGNORECASE)).first
+            has_add = (
+                not is_out_of_stock
+                and await add_button.count() > 0
+                and await add_button.is_visible()
+                and await add_button.is_enabled()
+            )
 
             # Extract price
             prices = re.findall(r"₹\s*(\d+)", body_text)
